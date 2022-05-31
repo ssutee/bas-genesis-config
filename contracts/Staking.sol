@@ -291,6 +291,15 @@ contract Staking is IStaking, InjectorContextHolder {
         ValidatorSnapshot storage validatorSnapshot = _touchValidatorSnapshot(validator, atEpoch);
         validatorSnapshot.totalDelegated += uint112(amount / BALANCE_COMPACT_PRECISION);
         _validatorsMap[toValidator] = validator;
+
+        if (validator.status == ValidatorStatus.Active && 
+            validatorSnapshot.totalDelegated < _chainConfigContract.getMinTotalDelegatedAmount()) {
+            _disableValidator(validator.validatorAddress);
+        } else if (validator.status == ValidatorStatus.Pending && 
+            validatorSnapshot.totalDelegated >= _chainConfigContract.getMinTotalDelegatedAmount()) {
+            _activateValidator(validator.validatorAddress);
+        }
+
         // if last pending delegate has the same next epoch then its safe to just increase total
         // staked amount because it can't affect current validator set, but otherwise we must create
         // new record in delegation queue with the last epoch (delegations are ordered by epoch)
@@ -327,6 +336,15 @@ contract Staking is IStaking, InjectorContextHolder {
         require(validatorSnapshot.totalDelegated >= uint112(amount / BALANCE_COMPACT_PRECISION), "Staking: insufficient balance");
         validatorSnapshot.totalDelegated -= uint112(amount / BALANCE_COMPACT_PRECISION);
         _validatorsMap[fromValidator] = validator;
+
+        if (validator.status == ValidatorStatus.Active && 
+            validatorSnapshot.totalDelegated < _chainConfigContract.getMinTotalDelegatedAmount()) {
+            _disableValidator(validator.validatorAddress);
+        } else if (validator.status == ValidatorStatus.Pending && 
+            validatorSnapshot.totalDelegated >= _chainConfigContract.getMinTotalDelegatedAmount()) {
+            _activateValidator(validator.validatorAddress);
+        }
+
         // if last pending delegate has the same next epoch then its safe to just increase total
         // staked amount because it can't affect current validator set, but otherwise we must create
         // new record in delegation queue with the last epoch (delegations are ordered by epoch)
