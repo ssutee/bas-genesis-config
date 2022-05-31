@@ -13,6 +13,7 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
     event UndelegatePeriodChanged(uint32 prevValue, uint32 newValue);
     event MinValidatorStakeAmountChanged(uint256 prevValue, uint256 newValue);
     event MinStakingAmountChanged(uint256 prevValue, uint256 newValue);
+    event MinTotalDelegatedAmountChanged(uint256 prevValue, uint256 newValue);
 
     struct ConsensusParams {
         uint32 activeValidatorsLength;
@@ -23,6 +24,7 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         uint32 undelegatePeriod;
         uint256 minValidatorStakeAmount;
         uint256 minStakingAmount;
+        uint256 minTotalDelegatedAmount;
     }
 
     ConsensusParams private _consensusParams;
@@ -136,5 +138,15 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         uint256 prevValue = _consensusParams.minStakingAmount;
         _consensusParams.minStakingAmount = newValue;
         emit MinStakingAmountChanged(prevValue, newValue);
+    }
+
+    function getMinTotalDelegatedAmount() external view returns (uint256) {
+        return _consensusParams.minTotalDelegatedAmount;
+    }
+
+    function setMinTotalDelegatedAmount(uint256 newValue) external override onlyFromGovernance {
+        uint256 prevValue = _consensusParams.minTotalDelegatedAmount;
+        _consensusParams.minTotalDelegatedAmount = newValue;
+        emit MinTotalDelegatedAmountChanged(prevValue, newValue);
     }
 }

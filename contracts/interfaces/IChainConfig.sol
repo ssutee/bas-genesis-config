@@ -34,4 +34,8 @@ interface IChainConfig {
     function getMinStakingAmount() external view returns (uint256);
 
     function setMinStakingAmount(uint256 newValue) external;
+
+    function getMinTotalDelegatedAmount() external view returns (uint256);
+
+    function setMinTotalDelegatedAmount(uint256 newValue) external;
 }
