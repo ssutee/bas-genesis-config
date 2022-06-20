@@ -65,6 +65,13 @@ contract Staking is IStaking, InjectorContextHolder {
     event Claimed(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
     event Redelegated(address indexed validator, address indexed staker, uint256 amount, uint256 dust, uint64 epoch);
 
+    // deposit/tax events
+    event VatTransferred(address indexed validator, uint256 amount);
+    event WhtTransferred(address indexed validator, uint256 amount);
+
+    event JdnRewardTransferred(address indexed validator, address receiver, uint256 amount);
+    event ValidatorRewardTransferred(address indexed validator, address receiver, uint256 amount);    
+
     enum ValidatorStatus {
         NotFound,
         Active,
@@ -717,11 +724,51 @@ contract Staking is IStaking, InjectorContextHolder {
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
         uint64 epoch = _currentEpoch();
+
+        // split deposit amount
+        (uint256 jdnAmount, uint256 validatorAmount, uint256 stakersAmount) = _getSplitAmounts(msg.value);
+
+        IChainConfig.TaxPercent memory taxPercent = _chainConfigContract.getTaxPercent();
+        uint256 jdnReward = _computeTax(validatorAddress, jdnAmount, taxPercent.vat, taxPercent.whtCompany);
+        uint256 validatorReward = _computeTax(validatorAddress, validatorAmount, taxPercent.vat, taxPercent.whtCompany);
+        uint256 stakersReward = _computeTax(validatorAddress, stakersAmount, taxPercent.vat, taxPercent.whtIndividual);
+
+        _transferNative(_chainConfigContract.getJdnWalletAddress(), jdnReward);        
+        _transferNative(validatorAddress, validatorReward);
+
         // increase total pending rewards for validator for current epoch
         ValidatorSnapshot storage currentSnapshot = _touchValidatorSnapshot(validator, epoch);
-        currentSnapshot.totalRewards += uint96(msg.value);
+        currentSnapshot.totalRewards += uint96(stakersReward);
+        
         // emit event
         emit ValidatorDeposited(validatorAddress, msg.value, epoch);
+        emit JdnRewardTransferred(validatorAddress, _chainConfigContract.getJdnWalletAddress(), jdnReward);
+        emit ValidatorRewardTransferred(validatorAddress, validatorAddress, validatorReward);
+    }
+
+    function _getSplitAmounts(uint256 amount) internal view returns (uint256 JDNAmount, uint256 validatorAmount, uint256 stakersAmount) {
+        IChainConfig.SplitPercent memory splitPercent = _chainConfigContract.getSplitPercent();
+        JDNAmount = (splitPercent.jdn * amount) / (_chainConfigContract.getPercentPrecision() * 100);
+        validatorAmount = (splitPercent.validator * amount) / (_chainConfigContract.getPercentPrecision() * 100);
+        stakersAmount = (splitPercent.stakers * amount) / (_chainConfigContract.getPercentPrecision() * 100);
+    }
+
+    function _computeTax(address validatorAddress, uint256 amount, uint32 vatPercent, uint32 whtPercent) internal returns (uint256 leftAmount) {
+        uint256 vatAmount = (vatPercent * amount) / (_chainConfigContract.getPercentPrecision() * 100);
+        uint256 beforeVatAmount = amount - vatAmount;
+        uint256 whtAmount = (whtPercent * beforeVatAmount) / (_chainConfigContract.getPercentPrecision() * 100);
+        leftAmount = amount - vatAmount - whtAmount;
+
+        _transferNative(_chainConfigContract.getVatWalletAddress(), vatAmount);
+        _transferNative(_chainConfigContract.getWhtWalletAddress(), whtAmount);
+
+        emit VatTransferred(validatorAddress, vatAmount);
+        emit WhtTransferred(validatorAddress, whtAmount);
+    }
+
+    function _transferNative(address receiver, uint256 amount) internal {
+        (bool sent, ) = payable(receiver).call{value: amount}("");
+        require(sent, "fail to send native");
     }
 
     function getValidatorFee(address validatorAddress) external override view returns (uint256) {
