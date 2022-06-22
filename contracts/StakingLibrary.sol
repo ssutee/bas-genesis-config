@@ -5,7 +5,7 @@ import "./interfaces/IChainConfig.sol";
 
 library StakingLibrary {
 
-    uint256 internal constant BALANCE_COMPACT_PRECISION = 1e10;
+    uint256 public constant BALANCE_COMPACT_PRECISION = 1e10;
 
     enum ValidatorStatus {
         NotFound,
