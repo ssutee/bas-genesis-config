@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "../Staking.sol";
+import "../StakingLibrary.sol";
 
 contract FakeStaking is Staking {
 
@@ -9,7 +10,7 @@ contract FakeStaking is Staking {
     }
 
     function addValidator(address account) external override {
-        _addValidator(account, account, ValidatorStatus.Active, 0, 0, _nextEpoch());
+        _addValidator(account, account, StakingLibrary.ValidatorStatus.Active, 0, 0, _nextEpoch());
     }
 
     function removeValidator(address account) external override {
@@ -25,7 +26,7 @@ contract FakeStaking is Staking {
     }
 
     function deposit(address validatorAddress) external payable override {
-        _depositFee(validatorAddress);
+        StakingLibrary.depositFee(_validatorSnapshots, _validatorsMap, _chainConfigContract, validatorAddress);
     }
 
     function slash(address validatorAddress) external override {
