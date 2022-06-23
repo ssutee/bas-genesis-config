@@ -55,20 +55,20 @@ contract Staking is InjectorContextHolder, IStaking {
     uint32 internal constant CLAIM_BEFORE_GAS = 100_000;
 
     // validator events
-    event ValidatorAdded(address indexed validator, address owner, uint8 status, uint16 commissionRate);
-    event ValidatorModified(address indexed validator, address owner, uint8 status, uint16 commissionRate);
-    event ValidatorRemoved(address indexed validator);
-    event ValidatorOwnerClaimed(address indexed validator, uint256 amount, uint64 epoch);
-    event ValidatorSlashed(address indexed validator, uint32 slashes, uint64 epoch);
-    event ValidatorJailed(address indexed validator, uint64 epoch);
-    event ValidatorDeposited(address indexed validator, uint256 amount, uint64 epoch);
-    event ValidatorReleased(address indexed validator, uint64 epoch);
+    // event ValidatorAdded(address indexed validator, address owner, uint8 status, uint16 commissionRate);
+    // event ValidatorModified(address indexed validator, address owner, uint8 status, uint16 commissionRate);
+    // event ValidatorRemoved(address indexed validator);
+    // event ValidatorOwnerClaimed(address indexed validator, uint256 amount, uint64 epoch);
+    // event ValidatorSlashed(address indexed validator, uint32 slashes, uint64 epoch);
+    // event ValidatorJailed(address indexed validator, uint64 epoch);
+    // event ValidatorDeposited(address indexed validator, uint256 amount, uint64 epoch);
+    // event ValidatorReleased(address indexed validator, uint64 epoch);
 
     // staker events
-    event Delegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
-    event Undelegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
-    event Claimed(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
-    event Redelegated(address indexed validator, address indexed staker, uint256 amount, uint256 dust, uint64 epoch);
+    // event Delegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
+    // event Undelegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
+    // event Claimed(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
+    // event Redelegated(address indexed validator, address indexed staker, uint256 amount, uint256 dust, uint64 epoch);
 
     enum ValidatorStatus {
         NotFound,
@@ -109,6 +109,7 @@ contract Staking is InjectorContextHolder, IStaking {
         DelegationOpUndelegate[] undelegateQueue;
         uint64 undelegateGap;
     }
+
 
     // mapping from validator address to validator
     mapping(address => Validator) internal _validatorsMap;
@@ -246,8 +247,8 @@ contract Staking is InjectorContextHolder, IStaking {
         validator.jailedBefore = 0;
         _validatorsMap[validatorAddress] = validator;
         _activeValidatorsList.push(validatorAddress);
-        // emit event
-        emit ValidatorReleased(validatorAddress, currentEpoch());
+        // // emit event
+        // emit ValidatorReleased(validatorAddress, currentEpoch());
     }
 
     function delegate(address validatorAddress) payable external override {
@@ -300,6 +301,32 @@ contract Staking is InjectorContextHolder, IStaking {
         return snapshot;
     }
 
+    function _getSplitAmounts(
+        IChainConfig _chainConfigContract,
+        uint256 amount
+    ) internal view returns (uint256 JDNAmount, uint256 validatorAmount, uint256 stakersAmount) {
+        IChainConfig.SplitPercent memory splitPercent = _chainConfigContract.getSplitPercent();
+        JDNAmount = (splitPercent.jdn * amount) / (_chainConfigContract.getPercentPrecision() * 100);
+        validatorAmount = (splitPercent.validator * amount) / (_chainConfigContract.getPercentPrecision() * 100);
+        stakersAmount = (splitPercent.stakers * amount) / (_chainConfigContract.getPercentPrecision() * 100);
+    }
+
+    function _computeTax( uint256 amount, uint32 vatPercent, uint32 whtPercent
+    ) internal returns (uint256 leftAmount) {
+        uint256 vatAmount = (vatPercent * amount) / (_CHAIN_CONFIG_CONTRACT.getPercentPrecision() * 100);
+        uint256 beforeVatAmount = amount - vatAmount;
+        uint256 whtAmount = (whtPercent * beforeVatAmount) / (_CHAIN_CONFIG_CONTRACT.getPercentPrecision() * 100);
+        leftAmount = amount - vatAmount - whtAmount;
+
+        _transferNative(_CHAIN_CONFIG_CONTRACT.getVatWalletAddress(), vatAmount);
+        _transferNative(_CHAIN_CONFIG_CONTRACT.getWhtWalletAddress(), whtAmount);
+
+    }
+
+    function _transferNative(address receiver, uint256 amount) internal {
+        (bool sent, ) = payable(receiver).call{value: amount}("");
+        require(sent, "fail to send native");
+    }
     function _delegateTo(address fromDelegator, address toValidator, uint256 amount) internal {
         // check is minimum delegate amount
         require(amount >= _CHAIN_CONFIG_CONTRACT.getMinStakingAmount() && amount != 0, "too low");
@@ -316,6 +343,15 @@ contract Staking is InjectorContextHolder, IStaking {
         ValidatorSnapshot storage validatorSnapshot = _touchValidatorSnapshot(validator, atEpoch);
         validatorSnapshot.totalDelegated += uint112(amount / BALANCE_COMPACT_PRECISION);
         _validatorsMap[toValidator] = validator;
+        
+        if (validator.status == ValidatorStatus.Active && 
+            validatorSnapshot.totalDelegated < _CHAIN_CONFIG_CONTRACT.getMinTotalDelegatedAmount()) {
+            disableValidator(validator.validatorAddress);
+        } else if (validator.status == ValidatorStatus.Pending && 
+            validatorSnapshot.totalDelegated >= _CHAIN_CONFIG_CONTRACT.getMinTotalDelegatedAmount()) {
+            activateValidator(validator.validatorAddress);
+        }
+        
         // if last pending delegate has the same next epoch then its safe to just increase total
         // staked amount because it can't affect current validator set, but otherwise we must create
         // new record in delegation queue with the last epoch (delegations are ordered by epoch)
@@ -333,8 +369,8 @@ contract Staking is InjectorContextHolder, IStaking {
             // there is no any delegations at al, lets create the first one
             delegation.delegateQueue.push(DelegationOpDelegate({epoch : atEpoch, amount : uint112(amount / BALANCE_COMPACT_PRECISION)}));
         }
-        // emit event with the next epoch
-        emit Delegated(toValidator, fromDelegator, amount, atEpoch);
+        // // emit event with the next epoch
+        // emit Delegated(toValidator, fromDelegator, amount, atEpoch);
     }
 
     function _undelegateFrom(address toDelegator, address fromValidator, uint256 amount) internal {
@@ -352,6 +388,16 @@ contract Staking is InjectorContextHolder, IStaking {
         require(validatorSnapshot.totalDelegated >= uint112(amount / BALANCE_COMPACT_PRECISION), "insufficient balance");
         validatorSnapshot.totalDelegated -= uint112(amount / BALANCE_COMPACT_PRECISION);
         _validatorsMap[fromValidator] = validator;
+
+        if (validator.status == ValidatorStatus.Active && 
+            validatorSnapshot.totalDelegated < _CHAIN_CONFIG_CONTRACT.getMinTotalDelegatedAmount()) {
+            disableValidator(validator.validatorAddress);
+        } else if (validator.status == ValidatorStatus.Pending && 
+            validatorSnapshot.totalDelegated >= _CHAIN_CONFIG_CONTRACT.getMinTotalDelegatedAmount()) {
+            activateValidator(validator.validatorAddress);
+        }
+
+
         // if last pending delegate has the same next epoch then its safe to just increase total
         // staked amount because it can't affect current validator set, but otherwise we must create
         // new record in delegation queue with the last epoch (delegations are ordered by epoch)
@@ -369,8 +415,8 @@ contract Staking is InjectorContextHolder, IStaking {
         }
         // create new undelegate queue operation with soft lock
         delegation.undelegateQueue.push(DelegationOpUndelegate({amount : uint112(amount / BALANCE_COMPACT_PRECISION), epoch : beforeEpoch + _CHAIN_CONFIG_CONTRACT.getUndelegatePeriod()}));
-        // emit event with the next epoch number
-        emit Undelegated(fromValidator, toDelegator, amount, beforeEpoch);
+        // // emit event with the next epoch number
+        // emit Undelegated(fromValidator, toDelegator, amount, beforeEpoch);
     }
 
     function _transferDelegatorRewards(address validator, address delegator, uint64 beforeEpochExclude, bool withRewards, bool withUndelegates) internal {
@@ -385,8 +431,8 @@ contract Staking is InjectorContextHolder, IStaking {
         }
         // for transfer claim mode just all rewards to the user
         _safeTransferWithGasLimit(payable(delegator), availableFunds);
-        // emit event
-        emit Claimed(validator, delegator, availableFunds, beforeEpochExclude);
+        // // emit event
+        // emit Claimed(validator, delegator, availableFunds, beforeEpochExclude);
     }
 
     function _redelegateDelegatorRewards(address validator, address delegator, uint64 beforeEpochExclude, bool withRewards, bool withUndelegates) internal {
@@ -408,8 +454,8 @@ contract Staking is InjectorContextHolder, IStaking {
         if (rewardsDust > 0) {
             _safeTransferWithGasLimit(payable(delegator), rewardsDust);
         }
-        // emit event
-        emit Redelegated(validator, delegator, amountToStake, rewardsDust, beforeEpochExclude);
+        // // emit event
+        // emit Redelegated(validator, delegator, amountToStake, rewardsDust, beforeEpochExclude);
     }
 
     function _processDelegateQueue(address validator, ValidatorDelegation storage delegation, uint64 beforeEpochExclude) internal returns (uint256 availableFunds) {
@@ -510,7 +556,7 @@ contract Staking is InjectorContextHolder, IStaking {
         if (systemFee > 0) {
             _unsafeTransfer(payable(address(_SYSTEM_REWARD_CONTRACT)), systemFee);
         }
-        emit ValidatorOwnerClaimed(validator.validatorAddress, availableFunds, beforeEpoch);
+        // emit ValidatorOwnerClaimed(validator.validatorAddress, availableFunds, beforeEpoch);
     }
 
     function _calcValidatorOwnerRewards(Validator memory validator, uint64 beforeEpoch) internal view returns (uint256) {
@@ -536,15 +582,6 @@ contract Staking is InjectorContextHolder, IStaking {
         delegatorFee = validatorSnapshot.totalRewards - ownerFee;
         // default system fee is zero for epoch
         systemFee = 0;
-    }
-
-    function registerValidator(address validatorAddress, uint16 commissionRate) payable external override {
-        uint256 initialStake = msg.value;
-        // // initial stake amount should be greater than minimum validator staking amount
-        require(initialStake >= _CHAIN_CONFIG_CONTRACT.getMinValidatorStakeAmount(), "too low");
-        require(initialStake % BALANCE_COMPACT_PRECISION == 0, "no remainder");
-        // add new validator as pending
-        _addValidator(validatorAddress, msg.sender, ValidatorStatus.Pending, commissionRate, initialStake, nextEpoch());
     }
 
     function addValidator(address account) external onlyFromGovernance virtual override {
@@ -575,9 +612,9 @@ contract Staking is InjectorContextHolder, IStaking {
         ValidatorDelegation storage delegation = _validatorDelegations[validatorAddress][validatorOwner];
         require(delegation.delegateQueue.length == 0);
         delegation.delegateQueue.push(DelegationOpDelegate(uint112(initialStake / BALANCE_COMPACT_PRECISION), sinceEpoch));
-        emit Delegated(validatorAddress, validatorOwner, initialStake, sinceEpoch);
-        // emit event
-        emit ValidatorAdded(validatorAddress, validatorOwner, uint8(status), commissionRate);
+        // emit Delegated(validatorAddress, validatorOwner, initialStake, sinceEpoch);
+        // // emit event
+        // emit ValidatorAdded(validatorAddress, validatorOwner, uint8(status), commissionRate);
     }
 
     function removeValidator(address account) external onlyFromGovernance virtual override {
@@ -588,8 +625,8 @@ contract Staking is InjectorContextHolder, IStaking {
         // remove from validators map
         delete _validatorOwners[validator.ownerAddress];
         delete _validatorsMap[account];
-        // emit event about it
-        emit ValidatorRemoved(account);
+        // // emit event about it
+        // emit ValidatorRemoved(account);
     }
 
     function _removeValidatorFromActiveList(address validatorAddress) internal {
@@ -609,47 +646,24 @@ contract Staking is InjectorContextHolder, IStaking {
         }
     }
 
-    function activateValidator(address validatorAddress) external onlyFromGovernance virtual override {
+    function activateValidator(address validatorAddress) public onlyFromGovernance virtual override {
         Validator memory validator = _validatorsMap[validatorAddress];
         require(_validatorsMap[validatorAddress].status == ValidatorStatus.Pending, "bad status");
         _activeValidatorsList.push(validatorAddress);
         validator.status = ValidatorStatus.Active;
         _validatorsMap[validatorAddress] = validator;
-        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
-        emit ValidatorModified(validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
+        // ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
+        // emit ValidatorModified(validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
     }
 
-    function disableValidator(address validatorAddress) external onlyFromGovernance virtual override {
+    function disableValidator(address validatorAddress) public onlyFromGovernance virtual override {
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status == ValidatorStatus.Active || validator.status == ValidatorStatus.Jail, "bad status");
         _removeValidatorFromActiveList(validatorAddress);
         validator.status = ValidatorStatus.Pending;
         _validatorsMap[validatorAddress] = validator;
-        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
-        emit ValidatorModified(validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
-    }
-
-    function changeValidatorCommissionRate(address validatorAddress, uint16 commissionRate) external {
-        require(commissionRate >= COMMISSION_RATE_MIN_VALUE && commissionRate <= COMMISSION_RATE_MAX_VALUE, "bad commission");
-        Validator memory validator = _validatorsMap[validatorAddress];
-        require(validator.status != ValidatorStatus.NotFound, "not found");
-        require(validator.ownerAddress == msg.sender, "only owner");
-        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
-        snapshot.commissionRate = commissionRate;
-        _validatorsMap[validatorAddress] = validator;
-        emit ValidatorModified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), commissionRate);
-    }
-
-    function changeValidatorOwner(address validatorAddress, address newOwner) external override {
-        Validator memory validator = _validatorsMap[validatorAddress];
-        require(validator.ownerAddress == msg.sender, "only owner");
-        require(_validatorOwners[newOwner] == address(0x00), "owner in use");
-        delete _validatorOwners[validator.ownerAddress];
-        validator.ownerAddress = newOwner;
-        _validatorOwners[newOwner] = validatorAddress;
-        _validatorsMap[validatorAddress] = validator;
-        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
-        emit ValidatorModified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
+        // ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
+        // emit ValidatorModified(validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
     }
 
     function isValidatorActive(address account) external override view returns (bool) {
@@ -712,11 +726,24 @@ contract Staking is InjectorContextHolder, IStaking {
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status != ValidatorStatus.NotFound, "not found");
         uint64 epoch = currentEpoch();
+                // split deposit amount
+        (uint256 jdnAmount, uint256 validatorAmount, uint256 stakersAmount) = _getSplitAmounts(_CHAIN_CONFIG_CONTRACT, msg.value);
+
+        IChainConfig.TaxPercent memory taxPercent = _CHAIN_CONFIG_CONTRACT.getTaxPercent();
+        uint256 jdnReward = _computeTax(jdnAmount, taxPercent.vat, taxPercent.whtCompany);
+        uint256 validatorReward = _computeTax(validatorAmount, taxPercent.vat, taxPercent.whtCompany);
+        uint256 stakersReward = _computeTax(stakersAmount, taxPercent.vat, taxPercent.whtIndividual);
+
+        _transferNative(_CHAIN_CONFIG_CONTRACT.getJdnWalletAddress(), jdnReward);        
+        _transferNative(validatorAddress, validatorReward);
+
         // increase total pending rewards for validator for current epoch
         ValidatorSnapshot storage currentSnapshot = _touchValidatorSnapshot(validator, epoch);
-        currentSnapshot.totalRewards += uint96(msg.value);
-        // emit event
-        emit ValidatorDeposited(validatorAddress, msg.value, epoch);
+        //currentSnapshot.totalRewards += uint96(msg.value);
+        currentSnapshot.totalRewards += uint96(stakersReward);
+
+        // // emit event
+        // emit ValidatorDeposited(validatorAddress, msg.value, epoch);
     }
 
     function getValidatorFee(address validatorAddress) external override view returns (uint256) {
@@ -815,12 +842,12 @@ contract Staking is InjectorContextHolder, IStaking {
             validator.status = ValidatorStatus.Jail;
             _removeValidatorFromActiveList(validatorAddress);
             _validatorsMap[validatorAddress] = validator;
-            emit ValidatorJailed(validatorAddress, epoch);
+            // emit ValidatorJailed(validatorAddress, epoch);
         } else {
             // validator state might change, lets update it
             _validatorsMap[validatorAddress] = validator;
         }
-        // emit event
-        emit ValidatorSlashed(validatorAddress, slashesCount, epoch);
+        // // emit event
+        // emit ValidatorSlashed(validatorAddress, slashesCount, epoch);
     }
 }

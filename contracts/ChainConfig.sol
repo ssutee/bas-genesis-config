@@ -13,6 +13,13 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
     event UndelegatePeriodChanged(uint32 prevValue, uint32 newValue);
     event MinValidatorStakeAmountChanged(uint256 prevValue, uint256 newValue);
     event MinStakingAmountChanged(uint256 prevValue, uint256 newValue);
+    event MinTotalDelegatedAmountChanged(uint256 prevValue, uint256 newValue);
+    event JdnWalletAddressChanged(address prevValue, address newValue);
+    event VatWalletAddressChanged(address prevValue, address newValue);
+    event WhtWalletAddressChanged(address prevValue, address newValue);
+
+    // 10000 = 100%
+    uint32 constant public PERCENT_PRECISION = 10000;
 
     struct ConsensusParams {
         uint32 activeValidatorsLength;
@@ -23,6 +30,12 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         uint32 undelegatePeriod;
         uint256 minValidatorStakeAmount;
         uint256 minStakingAmount;
+        uint256 minTotalDelegatedAmount;
+        address jdnWalletAddress;
+        address vatWalletAddress;
+        address whtWalletAddress;
+        SplitPercent splitPercent;
+        TaxPercent taxPercent;
     }
 
     ConsensusParams private _consensusParams;
@@ -74,6 +87,9 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         emit MinValidatorStakeAmountChanged(0, minValidatorStakeAmount);
         _consensusParams.minStakingAmount = minStakingAmount;
         emit MinStakingAmountChanged(0, minStakingAmount);
+
+        _consensusParams.splitPercent = SplitPercent(3300, 670, 6030); // 33%, 6.7%, 60.3%
+        _consensusParams.taxPercent = TaxPercent(700, 300, 1500); // 7%, 3%, 15%
     }
 
     function getActiveValidatorsLength() external view override returns (uint32) {
@@ -154,5 +170,69 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         uint256 prevValue = _consensusParams.minStakingAmount;
         _consensusParams.minStakingAmount = newValue;
         emit MinStakingAmountChanged(prevValue, newValue);
+    }
+
+    function getMinTotalDelegatedAmount() external view returns (uint256) {
+        return _consensusParams.minTotalDelegatedAmount;
+    }
+
+    function setMinTotalDelegatedAmount(uint256 newValue) external override onlyFromGovernance {
+        uint256 prevValue = _consensusParams.minTotalDelegatedAmount;
+        _consensusParams.minTotalDelegatedAmount = newValue;
+        emit MinTotalDelegatedAmountChanged(prevValue, newValue);
+    }
+
+    function getJdnWalletAddress() external view returns (address) {
+        return _consensusParams.jdnWalletAddress;
+    }
+
+    function setJdnWalletAddress(address newValue) external override onlyFromGovernance {
+        address prevValue = _consensusParams.jdnWalletAddress;
+        _consensusParams.jdnWalletAddress = newValue;
+        emit JdnWalletAddressChanged(prevValue, newValue);
+    }
+
+    function getVatWalletAddress() external view returns (address) {
+        return _consensusParams.vatWalletAddress;
+    }
+
+    function setVatWalletAddress(address newValue) external override onlyFromGovernance {
+        address prevValue = _consensusParams.vatWalletAddress;
+        _consensusParams.vatWalletAddress = newValue;
+        emit VatWalletAddressChanged(prevValue, newValue);
+    }
+
+    function getWhtWalletAddress() external view returns (address) {
+        return _consensusParams.whtWalletAddress;
+    }
+
+    function setWhtWalletAddress(address newValue) external override onlyFromGovernance {
+        address prevValue = _consensusParams.whtWalletAddress;
+        _consensusParams.whtWalletAddress = newValue;
+        emit WhtWalletAddressChanged(prevValue, newValue);
+    }
+
+    function getSplitPercent() external view returns (SplitPercent memory) {
+        return _consensusParams.splitPercent;
+    }
+
+    function setSplitPercent(SplitPercent memory newValue) external override onlyFromGovernance {
+        require(newValue.jdn + newValue.validator + newValue.stakers == PERCENT_PRECISION, "ChainConfig: invalid percent");
+        _consensusParams.splitPercent = newValue;
+    }
+
+    function getTaxPercent() external view returns (TaxPercent memory) {
+        return _consensusParams.taxPercent;
+    }
+
+    function setTaxPercent(TaxPercent memory newValue) external override onlyFromGovernance {
+        require(newValue.vat <= PERCENT_PRECISION, "ChainConfig: invalid percent");
+        require(newValue.whtCompany <= PERCENT_PRECISION, "ChainConfig: invalid percent");
+        require(newValue.whtIndividual <= PERCENT_PRECISION, "ChainConfig: invalid percent");
+        _consensusParams.taxPercent = newValue;
+    }
+
+    function getPercentPrecision() external pure returns (uint32) {
+        return PERCENT_PRECISION;
     }
 }

@@ -2,6 +2,18 @@
 pragma solidity ^0.8.0;
 
 interface IChainConfig {
+    
+    struct SplitPercent {
+        uint32 jdn;
+        uint32 validator;
+        uint32 stakers;
+    }
+
+    struct TaxPercent {
+        uint32 vat;
+        uint32 whtCompany;
+        uint32 whtIndividual;
+    }
 
     function getActiveValidatorsLength() external view returns (uint32);
 
@@ -34,4 +46,30 @@ interface IChainConfig {
     function getMinStakingAmount() external view returns (uint256);
 
     function setMinStakingAmount(uint256 newValue) external;
+    
+    function getMinTotalDelegatedAmount() external view returns (uint256);
+
+    function setMinTotalDelegatedAmount(uint256 newValue) external;
+
+    function getJdnWalletAddress() external view returns (address);
+
+    function setJdnWalletAddress(address newValue) external;
+
+    function getVatWalletAddress() external view returns (address);
+
+    function setVatWalletAddress(address newValue) external;
+
+    function getWhtWalletAddress() external view returns (address);
+
+    function setWhtWalletAddress(address newValue) external;
+
+    function getSplitPercent() external view returns (SplitPercent memory);
+
+    function setSplitPercent(SplitPercent memory newValue) external;
+
+    function getTaxPercent() external view returns (TaxPercent memory);
+    
+    function setTaxPercent(TaxPercent memory newValue) external;
+
+    function getPercentPrecision() external view returns (uint32);
 }
