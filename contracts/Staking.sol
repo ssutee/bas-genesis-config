@@ -310,16 +310,16 @@ contract Staking is InjectorContextHolder, IStaking {
         uint256 amount
     ) internal view returns (uint256 JDNAmount, uint256 validatorAmount, uint256 stakersAmount) {
         IChainConfig.SplitPercent memory splitPercent = _chainConfigContract.getSplitPercent();
-        JDNAmount = (splitPercent.jdn * amount) / (_chainConfigContract.getPercentPrecision() * 100);
-        validatorAmount = (splitPercent.validator * amount) / (_chainConfigContract.getPercentPrecision() * 100);
-        stakersAmount = (splitPercent.stakers * amount) / (_chainConfigContract.getPercentPrecision() * 100);
+        JDNAmount = (splitPercent.jdn * amount) / (_chainConfigContract.getPercentPrecision());
+        validatorAmount = (splitPercent.validator * amount) / (_chainConfigContract.getPercentPrecision());
+        stakersAmount = (splitPercent.stakers * amount) / (_chainConfigContract.getPercentPrecision());
     }
 
     function _computeTax( uint256 amount, uint32 vatPercent, uint32 whtPercent
     ) internal returns (uint256 leftAmount) {
-        uint256 vatAmount = (vatPercent * amount) / (_CHAIN_CONFIG_CONTRACT.getPercentPrecision() * 100);
+        uint256 vatAmount = (vatPercent * amount) / (_CHAIN_CONFIG_CONTRACT.getPercentPrecision());
         uint256 beforeVatAmount = amount - vatAmount;
-        uint256 whtAmount = (whtPercent * beforeVatAmount) / (_CHAIN_CONFIG_CONTRACT.getPercentPrecision() * 100);
+        uint256 whtAmount = (whtPercent * beforeVatAmount) / (_CHAIN_CONFIG_CONTRACT.getPercentPrecision());
         leftAmount = amount - vatAmount - whtAmount;
 
         // _transferNative(_CHAIN_CONFIG_CONTRACT.getVatWalletAddress(), vatAmount);
