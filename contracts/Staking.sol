@@ -70,6 +70,13 @@ contract Staking is InjectorContextHolder, IStaking {
     event Claimed(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
     // event Redelegated(address indexed validator, address indexed staker, uint256 amount, uint256 dust, uint64 epoch);
 
+    // deposit/tax events
+    event VatTransferred(address indexed validator, address receiver, uint256 amount);
+    event WhtTransferred(address indexed validator, address receiver, uint256 amount);
+
+    event JdnRewardTransferred(address indexed validator, address receiver, uint256 amount);
+    event ValidatorRewardTransferred(address indexed validator, address receiver, uint256 amount);  
+
     enum ValidatorStatus {
         NotFound,
         Active,
@@ -315,7 +322,7 @@ contract Staking is InjectorContextHolder, IStaking {
         stakersAmount = (splitPercent.stakers * amount) / (_chainConfigContract.getPercentPrecision());
     }
 
-    function _computeTax( uint256 amount, uint32 vatPercent, uint32 whtPercent
+    function _computeTax(address validatorAddress, uint256 amount, uint32 vatPercent, uint32 whtPercent
     ) internal returns (uint256 leftAmount) {
         uint256 vatAmount = (vatPercent * amount) / (_CHAIN_CONFIG_CONTRACT.getPercentPrecision());
         uint256 beforeVatAmount = amount - vatAmount;
@@ -327,6 +334,8 @@ contract Staking is InjectorContextHolder, IStaking {
         _unsafeTransfer(payable(address(_CHAIN_CONFIG_CONTRACT.getVatWalletAddress())), vatAmount);
         _unsafeTransfer(payable(address(_CHAIN_CONFIG_CONTRACT.getWhtWalletAddress())), whtAmount);
 
+        emit VatTransferred(validatorAddress, _CHAIN_CONFIG_CONTRACT.getVatWalletAddress(), vatAmount);
+        emit WhtTransferred(validatorAddress, _CHAIN_CONFIG_CONTRACT.getWhtWalletAddress(), whtAmount);
     }
 
     /*
@@ -739,9 +748,9 @@ contract Staking is InjectorContextHolder, IStaking {
         (uint256 jdnAmount, uint256 validatorAmount, uint256 stakersAmount) = _getSplitAmounts(_CHAIN_CONFIG_CONTRACT, msg.value);
 
         IChainConfig.TaxPercent memory taxPercent = _CHAIN_CONFIG_CONTRACT.getTaxPercent();
-        uint256 jdnReward = _computeTax(jdnAmount, taxPercent.vat, taxPercent.whtCompany);
-        uint256 validatorReward = _computeTax(validatorAmount, taxPercent.vat, taxPercent.whtCompany);
-        uint256 stakersReward = _computeTax(stakersAmount, taxPercent.vat, taxPercent.whtIndividual);
+        uint256 jdnReward = _computeTax(validatorAddress, jdnAmount, taxPercent.vat, taxPercent.whtCompany);
+        uint256 validatorReward = _computeTax(validatorAddress, validatorAmount, taxPercent.vat, taxPercent.whtCompany);
+        uint256 stakersReward = _computeTax(validatorAddress, stakersAmount, taxPercent.vat, taxPercent.whtIndividual);
 
         //_transferNative(_CHAIN_CONFIG_CONTRACT.getJdnWalletAddress(), jdnReward);        
         //_transferNative(validatorAddress, validatorReward);
@@ -755,6 +764,8 @@ contract Staking is InjectorContextHolder, IStaking {
 
         // emit event
         emit ValidatorDeposited(validatorAddress, msg.value, epoch);
+        emit JdnRewardTransferred(validatorAddress, _CHAIN_CONFIG_CONTRACT.getJdnWalletAddress(), jdnReward);
+        emit ValidatorRewardTransferred(validatorAddress, validatorAddress, validatorReward);
     }
 
     function getValidatorFee(address validatorAddress) external override view returns (uint256) {
